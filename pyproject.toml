@@ -5,6 +5,7 @@ description = "Pipeline de dados abertos de CNPJ (Receita Federal): bronze -> si
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "duckdb>=1.5.5",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
 ]
