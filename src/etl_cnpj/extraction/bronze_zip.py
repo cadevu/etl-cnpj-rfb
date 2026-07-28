@@ -7,13 +7,17 @@ resolve essa indireção, extraindo cada CSV interno para um caminho previsível
 entidade (as chaves de `transform.schemas.TABLES`) e, quando houver, no número do shard.
 """
 
+import logging
 import re
 import shutil
 import tempfile
+import time
 import zipfile
 from pathlib import Path
 
 from etl_cnpj.transform.schemas import TABLES
+
+logger = logging.getLogger("etl_cnpj.extraction")
 
 _ENTRY_PATTERN = re.compile(r"^(?P<entity>[A-Za-z]+)(?P<shard>\d*)\.zip$")
 
@@ -66,6 +70,10 @@ def extract_bronze(
             if entities is not None and entity not in entities:
                 continue
 
+            shard_label = f"{entity} (shard {shard})" if shard is not None else entity
+            shard_start = time.perf_counter()
+            logger.info("extraindo %s <- %s", shard_label, info.filename)
+
             with tempfile.NamedTemporaryFile(suffix=".zip") as nested_tmp:
                 with outer.open(info) as nested_stream:
                     shutil.copyfileobj(nested_stream, nested_tmp)
@@ -84,5 +92,11 @@ def extract_bronze(
                         shutil.copyfileobj(src, dst)
 
             extracted.append(dest_path)
+            logger.info(
+                "concluído %s -> %s (%.1fs)",
+                shard_label,
+                dest_path,
+                time.perf_counter() - shard_start,
+            )
 
     return extracted

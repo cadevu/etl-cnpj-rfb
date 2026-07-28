@@ -24,6 +24,9 @@ data/silver/
 airflow/logs/
 airflow/plugins/__pycache__/
 
+# Logs de execução do pipeline (scripts/run_pipeline.py)
+logs/
+
 # Editors / OS
 .vscode/
 .idea/

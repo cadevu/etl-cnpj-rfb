@@ -13,14 +13,17 @@ extraídos) e `data/silver/` (Parquet final). Medição de tempo aqui é proposi
 """
 
 import argparse
+import logging
 import sys
 import time
 from collections.abc import Callable
+from datetime import datetime
 from functools import partial
 from pathlib import Path
 
 from etl_cnpj.config import settings
 from etl_cnpj.extraction.bronze_zip import extract_bronze
+from etl_cnpj.logging_config import setup_logging
 from etl_cnpj.transform.pipeline import (
     transform_dominio,
     transform_empresas,
@@ -28,6 +31,9 @@ from etl_cnpj.transform.pipeline import (
     transform_simples,
     transform_socios,
 )
+
+logger = logging.getLogger("etl_cnpj.pipeline")
+_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 _SHARDED_ENTITIES = {"empresas", "estabelecimentos", "socios"}
 _DOMINIO_ENTITIES = ("cnaes", "municipios", "naturezas", "paises", "qualificacoes", "motivos")
@@ -79,26 +85,59 @@ def main() -> None:
     bronze_zip = _resolve_bronze_zip(args.bronze_zip)
     reference_month = bronze_zip.stem
 
-    print(f"zip bronze: {bronze_zip}")
-    print(f"mês de referência: {reference_month}")
-    print(f"entidades: {', '.join(entities)}")
+    log_path = setup_logging(reference_month)
 
-    start = time.perf_counter()
-    extract_bronze(bronze_zip, settings.work_dir, entities=set(entities))
-    extract_elapsed = time.perf_counter() - start
-    print(f"extração total: {extract_elapsed:.1f}s")
+    run_start_dt = datetime.now()
+    logger.info("log desta execução em: %s", log_path)
+    logger.info("início da execução: %s", run_start_dt.strftime(_TIMESTAMP_FORMAT))
+    logger.info("zip bronze: %s", bronze_zip)
+    logger.info("mês de referência: %s", reference_month)
+    logger.info("entidades: %s", ", ".join(entities))
 
-    total_transform = 0.0
-    for entity in entities:
-        csv_paths = _csv_paths_for(entity, settings.work_dir)
+    try:
+        extract_start_dt = datetime.now()
         start = time.perf_counter()
-        out_dir = _TRANSFORMS[entity](csv_paths, settings.silver_dir, reference_month)
-        elapsed = time.perf_counter() - start
-        total_transform += elapsed
-        print(f"  {entity}: {len(csv_paths)} arquivo(s) -> {out_dir} em {elapsed:.1f}s")
+        extract_bronze(bronze_zip, settings.work_dir, entities=set(entities))
+        extract_elapsed = time.perf_counter() - start
+        extract_end_dt = datetime.now()
+        logger.info(
+            "extração total: %s -> %s (%.1fs)",
+            extract_start_dt.strftime(_TIMESTAMP_FORMAT),
+            extract_end_dt.strftime(_TIMESTAMP_FORMAT),
+            extract_elapsed,
+        )
 
-    print(f"transformação total: {total_transform:.1f}s")
-    print(f"total geral: {extract_elapsed + total_transform:.1f}s")
+        total_transform = 0.0
+        for entity in entities:
+            csv_paths = _csv_paths_for(entity, settings.work_dir)
+            entity_start_dt = datetime.now()
+            start = time.perf_counter()
+            out_dir = _TRANSFORMS[entity](csv_paths, settings.silver_dir, reference_month)
+            elapsed = time.perf_counter() - start
+            entity_end_dt = datetime.now()
+            total_transform += elapsed
+            logger.info(
+                "  %s: %d arquivo(s) -> %s | %s -> %s (%.1fs)",
+                entity,
+                len(csv_paths),
+                out_dir,
+                entity_start_dt.strftime(_TIMESTAMP_FORMAT),
+                entity_end_dt.strftime(_TIMESTAMP_FORMAT),
+                elapsed,
+            )
+    except Exception:
+        logger.exception("execução interrompida por erro")
+        raise
+
+    run_end_dt = datetime.now()
+    logger.info("transformação total: %.1fs", total_transform)
+    logger.info("total geral: %.1fs", extract_elapsed + total_transform)
+    logger.info(
+        "fim da execução: %s (início %s, %.1fs no total)",
+        run_end_dt.strftime(_TIMESTAMP_FORMAT),
+        run_start_dt.strftime(_TIMESTAMP_FORMAT),
+        (run_end_dt - run_start_dt).total_seconds(),
+    )
 
 
 if __name__ == "__main__":

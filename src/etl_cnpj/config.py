@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     bronze_dir: Path = REPO_ROOT / "data" / "bronze"
     work_dir: Path = REPO_ROOT / "data" / "_work"
     silver_dir: Path = REPO_ROOT / "data" / "silver"
+    logs_dir: Path = REPO_ROOT / "logs"
 
     # Fonte dos dados (Fase 1: extraction/rf_client.py).
     # TODO: confirmar a URL oficial atual do portal de Dados Abertos do CNPJ e preencher

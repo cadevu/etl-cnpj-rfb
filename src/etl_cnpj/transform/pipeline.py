@@ -13,7 +13,10 @@ import duckdb
 
 from etl_cnpj.transform.schemas import column_names
 
-_CSV_OPTIONS = "header = false, sep = ';', quote = '\"', encoding = 'latin-1', all_varchar = true"
+# DuckDB's 'latin-1' alias rejects some real RF shards as "not latin-1 encoded" even though
+# ISO-8859-1 is a total mapping over all byte values; '8859_1' (an ICU alias for the same charset)
+# doesn't have that bug and reads the identical shards cleanly.
+_CSV_OPTIONS = "header = false, sep = ';', quote = '\"', encoding = '8859_1', all_varchar = true"
 
 _DOMINIO_ENTITIES = {"cnaes", "municipios", "naturezas", "paises", "qualificacoes", "motivos"}
 
