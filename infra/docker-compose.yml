@@ -1,0 +1,60 @@
+# Postgres local — camada gold (Fase 2).
+#
+# Subir:    docker compose -f infra/docker-compose.yml up -d
+# Derrubar: docker compose -f infra/docker-compose.yml down       (mantém os dados)
+#           docker compose -f infra/docker-compose.yml down -v    (APAGA o volume)
+#
+# Nota: não existe mais a chave `version:` no topo — ela é obsoleta no Compose v2
+# (tutoriais antigos ainda mostram, e o Compose emite warning se você usar).
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: cnpj-postgres
+
+    environment:
+      # A imagem oficial do Postgres cria esse usuário/senha/banco no primeiro boot.
+      # Os defaults batem com o POSTGRES_DSN documentado em .env.example.
+      # Credenciais de desenvolvimento local — em nuvem virão de secret manager.
+      POSTGRES_USER: ${POSTGRES_USER:-cnpj}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cnpj}
+      POSTGRES_DB: ${POSTGRES_DB:-cnpj}
+
+    ports:
+      # host:container — é isso que permite ao POSTGRES_DSN usar localhost:5432.
+      - "${POSTGRES_PORT:-5432}:5432"
+
+    volumes:
+      # Volume nomeado: os dados sobrevivem a `down`, `rm` e recriação do container.
+      - pgdata:/var/lib/postgresql/data
+      # Scripts .sql aqui rodam UMA vez, na inicialização de um volume vazio.
+      # Se o volume já existe, o Docker ignora este diretório silenciosamente.
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+
+    command:
+      # Tuning para carga bulk numa máquina com ~7,7 GB de RAM (WSL2).
+      # O default do Postgres é conservador demais para construir índices GIN
+      # sobre milhões de linhas.
+      - postgres
+      - -c
+      - shared_buffers=1GB           # cache de páginas do Postgres
+      - -c
+      - maintenance_work_mem=512MB   # memória para CREATE INDEX / VACUUM
+      - -c
+      - work_mem=32MB                # por operação de sort/hash, por conexão
+      - -c
+      - max_wal_size=2GB             # menos checkpoints durante COPY em massa
+
+    healthcheck:
+      # Deixa o Compose saber quando o banco está de fato aceitando conexões —
+      # o container "subir" acontece antes do Postgres estar pronto. Na Fase 3,
+      # o Airflow vai usar isto com `depends_on: condition: service_healthy`.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cnpj} -d ${POSTGRES_DB:-cnpj}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+    restart: unless-stopped
+
+volumes:
+  pgdata:
